@@ -23,7 +23,7 @@ router.get('/google/callback',
         // Generate JWT token
         const token = jwt.sign(
             {
-                id: req.user.id,
+                id: req.user._id,
                 email: req.user.email,
                 username: req.user.username
             },
@@ -31,8 +31,9 @@ router.get('/google/callback',
             { expiresIn: '24h' }
         );
 
-        // Redirect to dashboard with token
-        res.redirect(`/dashboard?token=${token}`);
+        // Redirect to frontend dashboard with token
+        const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+        res.redirect(`${clientUrl}/dashboard.html?token=${token}`);
     }
 );
 
