@@ -24,6 +24,7 @@ import userRoutes from './routes/user.js';
 // Middleware
 import { authenticateToken } from './middleware/auth.js';
 import { setupWebSocket } from './websocket/handler.js';
+import './middleware/passport.js'; // Register Passport strategies
 
 dotenv.config();
 
