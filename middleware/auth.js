@@ -45,18 +45,34 @@ export function authorizeRole(...roles) {
 /**
  * Rate limiting middleware
  */
-import { RateLimiterMemory } from 'rate-limiter-flexible';
+// Lightweight in-memory rate limiter (per-IP sliding window)
+const RATE_LIMIT_POINTS = 100; // max requests
+const RATE_LIMIT_WINDOW = 60 * 1000; // window in ms
+const ipCounters = new Map();
 
-const rateLimiter = new RateLimiterMemory({
-    points: 100, // 100 requests
-    duration: 60 // per minute
-});
-
-export async function rateLimit(req, res, next) {
+export function rateLimit(req, res, next) {
     try {
-        await rateLimiter.consume(req.ip);
+        const now = Date.now();
+        const ip = req.ip || req.connection.remoteAddress || 'local';
+        const entry = ipCounters.get(ip) || { count: 0, windowStart: now };
+
+        if (now - entry.windowStart > RATE_LIMIT_WINDOW) {
+            // reset window
+            entry.count = 1;
+            entry.windowStart = now;
+        } else {
+            entry.count += 1;
+        }
+
+        ipCounters.set(ip, entry);
+
+        if (entry.count > RATE_LIMIT_POINTS) {
+            return res.status(429).json({ error: 'Too many requests' });
+        }
+
         next();
     } catch (err) {
-        res.status(429).json({ error: 'Too many requests' });
+        // If anything goes wrong, allow the request (fail-open)
+        next();
     }
 }
