@@ -32,7 +32,16 @@ router.get('/google/callback',
         );
 
         // Redirect to frontend dashboard with token
-        const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+        let clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+        
+        // Ensure URL is absolute (starts with http/https)
+        if (!clientUrl.startsWith('http://') && !clientUrl.startsWith('https://')) {
+            clientUrl = `https://${clientUrl}`;
+        }
+        
+        // Remove trailing slash to prevent double slashes
+        clientUrl = clientUrl.replace(/\/$/, '');
+        
         res.redirect(`${clientUrl}/dashboard.html?token=${token}`);
     }
 );

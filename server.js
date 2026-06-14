@@ -68,45 +68,12 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ===== View Engine =====
-app.set('view engine', 'ejs');
-app.set('views', join(__dirname, '../Frontend/Views'));
-app.use(express.static(join(__dirname, '../Frontend/Public')));
-
 // ===== Routes =====
 app.use('/auth', authRoutes);
 app.use('/api/search', authenticateToken, searchRoutes);
 app.use('/api/queue', authenticateToken, queueRoutes);
 app.use('/api/lobby', authenticateToken, lobbyRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
-
-// ===== Dashboard Page =====
-app.get('/dashboard', authenticateToken, (req, res) => {
-    res.render('dashboard', { user: req.user });
-});
-
-app.get('/queue/:contentId', authenticateToken, (req, res) => {
-    res.render('queue', { 
-        user: req.user,
-        content: req.query
-    });
-});
-
-app.get('/lobby/:matchId', authenticateToken, (req, res) => {
-    res.render('lobby', { user: req.user, match: req.match, partner: req.partner });
-});
-
-app.get('/feedback', authenticateToken, (req, res) => {
-    res.render('feedback', { user: req.user, partner: req.partner });
-});
-
-// ===== Landing Page =====
-app.get('/', (req, res) => {
-    if (req.isAuthenticated()) {
-        return res.redirect('/dashboard');
-    }
-    res.render('index');
-});
 
 // ===== Health Check =====
 app.get('/health', async (req, res) => {
