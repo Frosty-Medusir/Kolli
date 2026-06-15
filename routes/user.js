@@ -289,7 +289,10 @@ router.get('/check-username/:username', async (req, res) => {
             return res.json({ available: false, reason: 'Username must be at least 3 characters' });
         }
         
-        const exists = await User.findOne({ username: new RegExp(`^${username}$`, 'i') });
+        const exists = await User.findOne({ 
+            username: new RegExp(`^${username}$`, 'i'),
+            _id: { $ne: req.user.id }
+        });
         
         res.json({ 
             available: !exists,
