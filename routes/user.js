@@ -17,7 +17,17 @@ router.get('/profile', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        res.json(user);
+        res.json({
+            username: user.username,
+            email: user.email,
+            avatar: user.avatar,
+            bio: user.bio,
+            preferences: user.preferences,
+            watchingNow: user.watchingNow,
+            onboarded: user.onboarded,
+            shadowBannedUntil: user.shadowBannedUntil,
+            stats: user.stats
+        });
     } catch (error) {
         console.error('Profile fetch error:', error);
         res.status(500).json({ error: 'Failed to fetch profile' });
@@ -61,13 +71,12 @@ router.put('/preferences', async (req, res) => {
  */
 router.post('/rate', async (req, res) => {
     try {
-        const { partnerId, rating, comment, tags } = req.body;
+        const { partnerId, stars, comment, tags } = req.body;
 
-        if (!partnerId || !rating || !['up', 'down'].includes(rating)) {
-            return res.status(400).json({ error: 'Partner ID and rating (up/down) required' });
+        if (!partnerId || typeof stars !== 'number' || stars < 1 || stars > 5) {
+            return res.status(400).json({ error: 'Partner ID and star rating (1-5) required' });
         }
 
-        // Find the latest match between these users
         const match = await Match.findOne({
             $or: [
                 { user1: req.user.id, user2: partnerId },
@@ -76,27 +85,38 @@ router.post('/rate', async (req, res) => {
             status: 'ended'
         }).sort({ createdAt: -1 });
 
-        // Create rating
+        if (!match) {
+            return res.status(400).json({ error: 'No completed match found for rating' });
+        }
+
         const newRating = new Rating({
             fromUser: req.user.id,
             toUser: partnerId,
-            matchId: match?._id,
-            rating,
+            matchId: match._id,
+            stars,
             comment: comment?.substring(0, 500),
             tags: tags || []
         });
 
         await newRating.save();
 
-        // Update user stats
         const toUser = await User.findById(partnerId);
         if (toUser) {
             const allRatings = await Rating.find({ toUser: partnerId });
-            const upRatings = allRatings.filter(r => r.rating === 'up').length;
-            const avgRating = upRatings / allRatings.length;
+            const total = allRatings.length;
+            const avgStars = allRatings.reduce((sum, item) => sum + item.stars, 0) / total;
+            const badRatings = await Rating.countDocuments({ toUser: partnerId, stars: { $lte: 2 } });
 
-            toUser.stats.totalRatingsReceived = allRatings.length;
-            toUser.stats.averageRating = parseFloat(avgRating.toFixed(2));
+            toUser.stats.totalRatingsReceived = total;
+            toUser.stats.averageRating = parseFloat(avgStars.toFixed(2));
+            toUser.stats.badRatings = badRatings;
+
+            if (badRatings > 3) {
+                const existingBan = toUser.shadowBannedUntil && new Date(toUser.shadowBannedUntil) > new Date();
+                const banExpiration = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                toUser.shadowBannedUntil = existingBan ? new Date(Math.max(new Date(toUser.shadowBannedUntil).getTime(), banExpiration.getTime())) : banExpiration;
+            }
+
             await toUser.save();
         }
 
@@ -157,6 +177,51 @@ router.post('/report', async (req, res) => {
 });
 
 /**
+ * Get active matches / lobbies for current user
+ */
+router.get('/matches', async (req, res) => {
+    try {
+        const matches = await Match.find({
+            $or: [
+                { user1: req.user.id },
+                { user2: req.user.id }
+            ],
+            status: 'active'
+        })
+        .populate('user1', 'username avatar')
+        .populate('user2', 'username avatar')
+        .sort({ createdAt: -1 })
+        .limit(20);
+
+        const results = matches.map(match => {
+            const partner = match.user1._id.toString() === req.user.id
+                ? match.user2
+                : match.user1;
+
+            return {
+                matchId: match.matchId,
+                contentTitle: match.contentTitle,
+                posterUrl: match.posterUrl,
+                genres: match.genres,
+                releaseYear: match.releaseYear,
+                partner: {
+                    username: partner.username,
+                    avatar: partner.avatar
+                },
+                messageCount: match.messageCount || 0,
+                expiresAt: match.expiresAt,
+                status: match.status
+            };
+        });
+
+        res.json({ matches: results });
+    } catch (error) {
+        console.error('Fetch matches error:', error);
+        res.status(500).json({ error: 'Failed to fetch matches' });
+    }
+});
+
+/**
  * Get user ratings/reviews
  */
 router.get('/:userId/ratings', async (req, res) => {
@@ -210,6 +275,177 @@ router.get('/history/watched', async (req, res) => {
     } catch (error) {
         console.error('History fetch error:', error);
         res.status(500).json({ error: 'Failed to fetch history' });
+    }
+});
+
+/**
+ * Check if username is available
+ */
+router.get('/check-username/:username', async (req, res) => {
+    try {
+        const { username } = req.params;
+        
+        if (!username || username.length < 3) {
+            return res.json({ available: false, reason: 'Username must be at least 3 characters' });
+        }
+        
+        const exists = await User.findOne({ username: new RegExp(`^${username}$`, 'i') });
+        
+        res.json({ 
+            available: !exists,
+            reason: exists ? 'Username already taken' : null
+        });
+    } catch (error) {
+        console.error('Username check error:', error);
+        res.status(500).json({ error: 'Failed to check username' });
+    }
+});
+
+/**
+ * Complete onboarding (username + watching shows)
+ */
+router.put('/onboard', async (req, res) => {
+    try {
+        const { username, watchingNow, genres } = req.body;
+        
+        if (!username || username.length < 3) {
+            return res.status(400).json({ error: 'Username must be at least 3 characters' });
+        }
+        
+        if (!Array.isArray(watchingNow) || watchingNow.length === 0) {
+            return res.status(400).json({ error: 'At least one show must be selected' });
+        }
+        
+        // Check username availability
+        const exists = await User.findOne({ 
+            username: new RegExp(`^${username}$`, 'i'),
+            _id: { $ne: req.user.id }
+        });
+        
+        if (exists) {
+            return res.status(400).json({ error: 'Username already taken' });
+        }
+        
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        user.username = username;
+        user.watchingNow = watchingNow;
+        if (genres && Array.isArray(genres)) {
+            user.preferences.genres = genres;
+        }
+        user.onboarded = true;
+        
+        await user.save();
+        
+        res.json({ 
+            message: 'Onboarding completed',
+            user: {
+                username: user.username,
+                onboarded: user.onboarded,
+                watchingNow: user.watchingNow,
+                genres: user.preferences.genres
+            }
+        });
+    } catch (error) {
+        console.error('Onboard error:', error);
+        res.status(500).json({ error: 'Failed to complete onboarding' });
+    }
+});
+
+/**
+ * Update user profile (username, avatar, genres)
+ */
+router.put('/profile', async (req, res) => {
+    try {
+        const { username, avatar, bio, genres } = req.body;
+        
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        if (username && username !== user.username) {
+            if (username.length < 3) {
+                return res.status(400).json({ error: 'Username must be at least 3 characters' });
+            }
+            const exists = await User.findOne({ 
+                username: new RegExp(`^${username}$`, 'i'),
+                _id: { $ne: req.user.id }
+            });
+            if (exists) {
+                return res.status(400).json({ error: 'Username already taken' });
+            }
+            user.username = username;
+        }
+        
+        if (avatar) user.avatar = avatar;
+        if (bio) user.bio = bio.substring(0, 500);
+        if (genres && Array.isArray(genres)) {
+            user.preferences.genres = genres;
+        }
+        
+        await user.save();
+        
+        res.json({ 
+            message: 'Profile updated',
+            user: {
+                username: user.username,
+                avatar: user.avatar,
+                bio: user.bio,
+                genres: user.preferences.genres
+            }
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
+/**
+ * Add/remove shows from watching list
+ */
+router.put('/watching', async (req, res) => {
+    try {
+        const { action, show, shows } = req.body;
+        
+        if (!['add', 'remove'].includes(action) || (!show && !shows)) {
+            return res.status(400).json({ error: 'Action and show(s) required' });
+        }
+        
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        if (action === 'add') {
+            const itemsToAdd = Array.isArray(shows) ? shows : [show];
+            itemsToAdd.forEach(item => {
+                if (!item || !item.tmdbId) return;
+                const exists = user.watchingNow.some(s => s.tmdbId === item.tmdbId);
+                if (!exists) {
+                    user.watchingNow.push({
+                        tmdbId: item.tmdbId,
+                        title: item.title,
+                        poster: item.poster || ''
+                    });
+                }
+            });
+        } else if (action === 'remove') {
+            user.watchingNow = user.watchingNow.filter(s => s.tmdbId !== show.tmdbId);
+        }
+        
+        await user.save();
+        
+        res.json({ 
+            message: `Show ${action}ed`,
+            watchingNow: user.watchingNow
+        });
+    } catch (error) {
+        console.error('Update watching error:', error);
+        res.status(500).json({ error: 'Failed to update watching list' });
     }
 });
 

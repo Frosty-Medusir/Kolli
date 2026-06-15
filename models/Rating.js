@@ -22,9 +22,10 @@ const ratingSchema = new mongoose.Schema({
         required: true
     },
     
-    rating: {
-        type: String,
-        enum: ['up', 'down'],
+    stars: {
+        type: Number,
+        min: 1,
+        max: 5,
         required: true
     },
     

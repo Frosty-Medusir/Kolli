@@ -30,11 +30,26 @@ const userSchema = new mongoose.Schema({
         }
     },
     
+    watchingNow: [{
+        tmdbId: Number,
+        title: String,
+        poster: String,
+        addedAt: { type: Date, default: Date.now }
+    }],
+    
+    onboarded: {
+        type: Boolean,
+        default: false
+    },
+    
     stats: {
         matchesCompleted: { type: Number, default: 0 },
         averageRating: { type: Number, default: 0 },
-        totalRatingsReceived: { type: Number, default: 0 }
+        totalRatingsReceived: { type: Number, default: 0 },
+        badRatings: { type: Number, default: 0 }
     },
+    
+    shadowBannedUntil: Date,
     
     createdAt: {
         type: Date,

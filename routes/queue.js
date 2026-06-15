@@ -17,6 +17,17 @@ router.post('/join', async (req, res) => {
         const { contentId, contentTitle, genre, genreId } = req.body;
         const userId = req.user.id;
 
+        const currentUser = await User.findById(userId);
+        if (!currentUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (currentUser.shadowBannedUntil && new Date(currentUser.shadowBannedUntil) > new Date()) {
+            return res.status(403).json({
+                error: 'You are temporarily shadow banned due to multiple poor ratings. Please try again later.'
+            });
+        }
+
         if (!contentId || !contentTitle) {
             return res.status(400).json({ error: 'Content ID and title required' });
         }
