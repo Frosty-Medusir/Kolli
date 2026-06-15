@@ -41,10 +41,24 @@ const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URL;
 
 // ===== Security & Middleware =====
 app.use(helmet());
+
+const allowedOrigins = [
+    process.env.CLIENT_URL,
+    'http://localhost:3000',
+    'https://kolli1.netlify.app'
+].filter(Boolean);
+
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS origin denied: ${origin}`));
+        }
+    },
     credentials: true
 }));
+
 app.use(morgan(NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
