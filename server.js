@@ -95,7 +95,7 @@ app.use(passport.session());
 
 // ===== Routes =====
 app.use('/auth', authRoutes);
-app.use('/api/search', authenticateToken, searchRoutes);
+app.use('/api/search', searchRoutes); // Public search (no auth required for onboarding)
 app.use('/api/queue', authenticateToken, queueRoutes);
 app.use('/api/lobby', authenticateToken, lobbyRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
