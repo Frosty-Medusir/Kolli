@@ -100,6 +100,17 @@ app.use('/api/queue', authenticateToken, queueRoutes);
 app.use('/api/lobby', authenticateToken, lobbyRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
 
+// ===== Root route =====
+app.get('/', (req, res) => {
+    res.json({
+        status: 'ok',
+        service: 'Kolli backend',
+        message: 'Welcome to the Kolli API',
+        api: '/api',
+        auth: '/auth/google'
+    });
+});
+
 // ===== Health Check =====
 app.get('/health', async (req, res) => {
     res.json({ 

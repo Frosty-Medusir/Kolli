@@ -48,17 +48,41 @@ router.get('/', async (req, res) => {
             try {
                 let response;
                 if (useTmdbV4) {
-                    // Use v4 API with Bearer token
-                    response = await axios.get(`${TMDB_BASE_URL_V4}/search/multi`, {
-                        params: {
-                            query: q,
-                            page: 1
-                        },
-                        headers: {
-                            'Authorization': `Bearer ${TMDB_ACCESS_TOKEN}`,
-                            'Content-Type': 'application/json;charset=utf-8'
-                        }
-                    });
+                    const searchType = type === 'tv' ? 'tv' : type === 'movie' ? 'movie' : 'both';
+
+                    const v4Search = async (endpoint) => {
+                        const response = await axios.get(`${TMDB_BASE_URL_V4}${endpoint}`, {
+                            params: {
+                                query: q,
+                                page: 1
+                            },
+                            headers: {
+                                'Authorization': `Bearer ${TMDB_ACCESS_TOKEN}`,
+                                'Content-Type': 'application/json;charset=utf-8'
+                            }
+                        });
+                        return response.data.results || [];
+                    };
+
+                    if (searchType === 'both') {
+                        const [movieResults, tvResults] = await Promise.all([
+                            v4Search('/search/movie'),
+                            v4Search('/search/tv')
+                        ]);
+                        response = { data: { results: [...movieResults, ...tvResults] } };
+                    } else {
+                        const endpoint = `/search/${searchType}`;
+                        response = await axios.get(`${TMDB_BASE_URL_V4}${endpoint}`, {
+                            params: {
+                                query: q,
+                                page: 1
+                            },
+                            headers: {
+                                'Authorization': `Bearer ${TMDB_ACCESS_TOKEN}`,
+                                'Content-Type': 'application/json;charset=utf-8'
+                            }
+                        });
+                    }
                 } else {
                     // Use v3 API with API key
                     const searchEndpoint = type === 'tv' ? '/search/tv' : 
@@ -82,7 +106,7 @@ router.get('/', async (req, res) => {
                         year: (item.release_date || item.first_air_date || '').split('-')[0],
                         rating: item.vote_average ? item.vote_average.toFixed(1) : 'N/A',
                         description: item.overview || 'No description available',
-                        type: item.media_type || 'unknown',
+                        type: item.media_type || item.media_type === 'movie' || item.media_type === 'tv' ? item.media_type : 'unknown',
                         genres: item.genre_ids || []
                     }));
             } catch (tmdbError) {
