@@ -35,7 +35,8 @@ router.get('/', async (req, res) => {
 
         let results = [];
 
-        if (!TMDB_API_KEY) {
+        if (!TMDB_API_KEY && !TMDB_ACCESS_TOKEN) {
+            // Use fallback when no API credentials available
             const lowerQuery = q.trim().toLowerCase();
             results = FALLBACK_SEARCH_RESULTS.filter(item =>
                 item.title.toLowerCase().includes(lowerQuery) ||
@@ -60,7 +61,9 @@ router.get('/', async (req, res) => {
                     });
                 } else {
                     // Use v3 API with API key
-                    response = await axios.get(`${TMDB_BASE_URL}/${searchEndpoint}`, {
+                    const searchEndpoint = type === 'tv' ? '/search/tv' : 
+                                          type === 'movie' ? '/search/movie' : '/search/multi';
+                    response = await axios.get(`${TMDB_BASE_URL}${searchEndpoint}`, {
                         params: {
                             api_key: TMDB_API_KEY,
                             query: q,
