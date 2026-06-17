@@ -17,42 +17,53 @@ router.get('/google', passport.authenticate('google', {
 /**
  * Google OAuth callback
  */
-router.get('/google/callback', 
-    passport.authenticate('google', { failureRedirect: '/' }),
-    (req, res) => {
-        // Generate JWT token
-        const token = jwt.sign(
-            {
-                id: req.user._id,
-                email: req.user.email,
-                username: req.user.username
-            },
-            process.env.JWT_SECRET || 'dev-secret',
-            { expiresIn: '24h' }
-        );
-
-        const cookieOptions = {
-            httpOnly: true,
-            secure: NODE_ENV === 'production',
-            sameSite: 'none',
-            maxAge: 24 * 60 * 60 * 1000
-        };
-
-        res.cookie('kolli_auth', token, cookieOptions);
-
-        let clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-        
-        // Ensure URL is absolute (starts with http/https)
-        if (!clientUrl.startsWith('http://') && !clientUrl.startsWith('https://')) {
-            clientUrl = `https://${clientUrl}`;
+router.get('/google/callback', (req, res, next) => {
+    passport.authenticate('google', { failureRedirect: '/' }, (err, user, info) => {
+        if (err) {
+            console.error('Google OAuth callback error:', err);
+            return res.redirect('/?auth_error=1');
         }
-        
-        // Remove trailing slash to prevent double slashes
-        clientUrl = clientUrl.replace(/\/$/, '');
-        
-        res.redirect(`${clientUrl}/dashboard.html`);
-    }
-);
+
+        if (!user) {
+            console.error('Google OAuth callback: no user returned', info);
+            return res.redirect('/?auth_error=1');
+        }
+
+        req.logIn(user, (loginErr) => {
+            if (loginErr) {
+                console.error('Failed to log in user after Google auth:', loginErr);
+                return res.redirect('/?auth_error=1');
+            }
+
+            // Generate JWT token
+            const token = jwt.sign(
+                {
+                    id: user._id,
+                    email: user.email,
+                    username: user.username
+                },
+                process.env.JWT_SECRET || 'dev-secret',
+                { expiresIn: '24h' }
+            );
+
+            const cookieOptions = {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'none',
+                maxAge: 24 * 60 * 60 * 1000
+            };
+
+            res.cookie('kolli_auth', token, cookieOptions);
+
+            let clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+            if (!clientUrl.startsWith('http://') && !clientUrl.startsWith('https://')) {
+                clientUrl = `https://${clientUrl}`;
+            }
+            clientUrl = clientUrl.replace(/\/$/, '');
+            return res.redirect(`${clientUrl}/dashboard.html`);
+        });
+    })(req, res, next);
+});
 
 /**
  * Logout
@@ -62,7 +73,7 @@ router.post('/logout', (req, res) => {
         if (err) return res.status(500).json({ error: 'Logout failed' });
         res.clearCookie('kolli_auth', {
             httpOnly: true,
-            secure: NODE_ENV === 'production',
+            secure: process.env.NODE_ENV === 'production',
             sameSite: 'none'
         });
         res.json({ message: 'Logged out successfully' });
