@@ -6,8 +6,12 @@ dotenv.config();
 
 const router = express.Router();
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const TMDB_ACCESS_TOKEN = process.env.TMDB_ACCESS_TOKEN;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const TMDB_BASE_URL_V4 = 'https://api.themoviedb.org/4';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
+
+const useTmdbV4 = !!TMDB_ACCESS_TOKEN;
 
 const FALLBACK_SEARCH_RESULTS = [
     { id: 1, title: 'Breaking Bad', poster: 'https://image.tmdb.org/t/p/w342/ggFHVNu6YYI5L9pCfOacjizRGt.jpg', year: '2008', rating: '9.5', description: 'A high school chemistry teacher turned methamphetamine producer...', genres: [18, 80] },
@@ -34,34 +38,54 @@ router.get('/', async (req, res) => {
         if (!TMDB_API_KEY) {
             const lowerQuery = q.trim().toLowerCase();
             results = FALLBACK_SEARCH_RESULTS.filter(item =>
-                item.title.toLowerCase().includes(lowerQuery)
+                item.title.toLowerCase().includes(lowerQuery) ||
+                item.description.toLowerCase().includes(lowerQuery) ||
+                (item.year && item.year.includes(lowerQuery))
             );
         } else {
-            // Search TMDB
-            const searchEndpoint = type === 'tv' ? '/search/tv' : 
-                                  type === 'movie' ? '/search/movie' : '/search/multi';
-
-            const response = await axios.get(`${TMDB_BASE_URL}${searchEndpoint}`, {
-                params: {
-                    api_key: TMDB_API_KEY,
-                    query: q,
-                    page: 1
+            // Search TMDB (v3 or v4)
+            try {
+                let response;
+                if (useTmdbV4) {
+                    // Use v4 API with Bearer token
+                    response = await axios.get(`${TMDB_BASE_URL_V4}/search/multi`, {
+                        params: {
+                            query: q,
+                            page: 1
+                        },
+                        headers: {
+                            'Authorization': `Bearer ${TMDB_ACCESS_TOKEN}`,
+                            'Content-Type': 'application/json;charset=utf-8'
+                        }
+                    });
+                } else {
+                    // Use v3 API with API key
+                    response = await axios.get(`${TMDB_BASE_URL}/${searchEndpoint}`, {
+                        params: {
+                            api_key: TMDB_API_KEY,
+                            query: q,
+                            page: 1
+                        }
+                    });
                 }
-            });
 
-            // Transform results
-            results = response.data.results
-                .slice(0, 20) // Limit to 20 results
-                .map(item => ({
-                    id: item.id,
-                    title: item.title || item.name,
-                    poster: item.poster_path ? `${TMDB_IMAGE_BASE}${item.poster_path}` : 'https://via.placeholder.com/342x513?text=No+Image',
-                    year: (item.release_date || item.first_air_date || '').split('-')[0],
-                    rating: item.vote_average ? item.vote_average.toFixed(1) : 'N/A',
-                    description: item.overview || 'No description available',
-                    type: item.media_type || 'unknown',
-                    genres: item.genre_ids || []
-                }));
+                // Transform results
+                results = response.data.results
+                    .slice(0, 20)
+                    .map(item => ({
+                        id: item.id,
+                        title: item.title || item.name,
+                        poster: item.poster_path ? `${TMDB_IMAGE_BASE}${item.poster_path}` : 'https://via.placeholder.com/342x513?text=No+Image',
+                        year: (item.release_date || item.first_air_date || '').split('-')[0],
+                        rating: item.vote_average ? item.vote_average.toFixed(1) : 'N/A',
+                        description: item.overview || 'No description available',
+                        type: item.media_type || 'unknown',
+                        genres: item.genre_ids || []
+                    }));
+            } catch (tmdbError) {
+                console.error('TMDB API error:', tmdbError.message);
+                results = [];
+            }
         }
 
         // Filter by genre if provided
@@ -89,25 +113,35 @@ router.get('/', async (req, res) => {
 router.get('/details/:contentId', async (req, res) => {
     try {
         const { contentId } = req.params;
-        const { type = 'multi' } = req.query;
 
-        const endpoint = type === 'tv' ? `/tv/${contentId}` :
-                        type === 'movie' ? `/movie/${contentId}` : `/multi/${contentId}`;
-
-        const response = await axios.get(`${TMDB_BASE_URL}${endpoint}`, {
-            params: { api_key: TMDB_API_KEY }
-        });
+        let response;
+        if (useTmdbV4) {
+            response = await axios.get(`${TMDB_BASE_URL_V4}/find/${contentId}`, {
+                params: { external_source: 'imdb_id' },
+                headers: {
+                    'Authorization': `Bearer ${TMDB_ACCESS_TOKEN}`,
+                    'Content-Type': 'application/json;charset=utf-8'
+                }
+            });
+        } else {
+            const { type = 'multi' } = req.query;
+            const endpoint = type === 'tv' ? `/tv/${contentId}` :
+                            type === 'movie' ? `/movie/${contentId}` : `/${contentId}`;
+            response = await axios.get(`${TMDB_BASE_URL}${endpoint}`, {
+                params: { api_key: TMDB_API_KEY }
+            });
+        }
 
         const item = response.data;
         const details = {
             id: item.id,
             title: item.title || item.name,
             description: item.overview,
-            poster: `${TMDB_IMAGE_BASE}${item.poster_path}`,
-            backdrop: `${TMDB_IMAGE_BASE}${item.backdrop_path}`,
-            rating: item.vote_average.toFixed(1),
+            poster: item.poster_path ? `${TMDB_IMAGE_BASE}${item.poster_path}` : null,
+            backdrop: item.backdrop_path ? `${TMDB_IMAGE_BASE}${item.backdrop_path}` : null,
+            rating: item.vote_average ? item.vote_average.toFixed(1) : 'N/A',
             releaseDate: item.release_date || item.first_air_date,
-            genres: item.genres.map(g => g.name),
+            genres: item.genres ? item.genres.map(g => g.name) : [],
             runtime: item.runtime || item.episode_run_time?.[0],
             language: item.original_language,
             popularity: item.popularity
@@ -128,10 +162,21 @@ router.get('/trending', async (req, res) => {
     try {
         const { type = 'movie', timeWindow = 'day' } = req.query;
 
-        const response = await axios.get(
-            `${TMDB_BASE_URL}/trending/${type}/${timeWindow}`,
-            { params: { api_key: TMDB_API_KEY } }
-        );
+        let response;
+        if (useTmdbV4) {
+            const trendingType = type === 'tv' ? 'tv' : 'movie';
+            response = await axios.get(`${TMDB_BASE_URL_V4}/trending/${trendingType}/${timeWindow}`, {
+                headers: {
+                    'Authorization': `Bearer ${TMDB_ACCESS_TOKEN}`,
+                    'Content-Type': 'application/json;charset=utf-8'
+                }
+            });
+        } else {
+            response = await axios.get(
+                `${TMDB_BASE_URL}/trending/${type}/${timeWindow}`,
+                { params: { api_key: TMDB_API_KEY } }
+            );
+        }
 
         const results = response.data.results
             .filter(item => item.poster_path)
@@ -140,7 +185,7 @@ router.get('/trending', async (req, res) => {
                 id: item.id,
                 title: item.title || item.name,
                 poster: `${TMDB_IMAGE_BASE}${item.poster_path}`,
-                rating: item.vote_average.toFixed(1),
+                rating: item.vote_average ? item.vote_average.toFixed(1) : 'N/A',
                 popularity: item.popularity
             }));
 
