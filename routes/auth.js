@@ -31,7 +31,15 @@ router.get('/google/callback',
             { expiresIn: '24h' }
         );
 
-        // Redirect to frontend dashboard with token
+        const cookieOptions = {
+            httpOnly: true,
+            secure: NODE_ENV === 'production',
+            sameSite: 'none',
+            maxAge: 24 * 60 * 60 * 1000
+        };
+
+        res.cookie('kolli_auth', token, cookieOptions);
+
         let clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
         
         // Ensure URL is absolute (starts with http/https)
@@ -42,7 +50,7 @@ router.get('/google/callback',
         // Remove trailing slash to prevent double slashes
         clientUrl = clientUrl.replace(/\/$/, '');
         
-        res.redirect(`${clientUrl}/dashboard.html?token=${token}`);
+        res.redirect(`${clientUrl}/dashboard.html`);
     }
 );
 
@@ -52,6 +60,11 @@ router.get('/google/callback',
 router.post('/logout', (req, res) => {
     req.logout((err) => {
         if (err) return res.status(500).json({ error: 'Logout failed' });
+        res.clearCookie('kolli_auth', {
+            httpOnly: true,
+            secure: NODE_ENV === 'production',
+            sameSite: 'none'
+        });
         res.json({ message: 'Logged out successfully' });
     });
 });

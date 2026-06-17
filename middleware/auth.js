@@ -4,12 +4,13 @@ import jwt from 'jsonwebtoken';
  * Verify and extract JWT token from Authorization header or cookies
  */
 export function authenticateToken(req, res, next) {
-    // Check Authorization header
+    // Check Authorization header or HttpOnly cookie
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const headerToken = authHeader && authHeader.split(' ')[1];
+    const cookieToken = req.cookies?.kolli_auth;
+    const token = headerToken || cookieToken;
 
     if (!token && !req.isAuthenticated()) {
-        // If no token and not authenticated via session, allow public access
         if (req.path.startsWith('/auth')) {
             return next();
         }
@@ -25,7 +26,6 @@ export function authenticateToken(req, res, next) {
             next();
         });
     } else {
-        // Session-based authentication already verified by Passport
         next();
     }
 }

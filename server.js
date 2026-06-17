@@ -63,6 +63,17 @@ app.use(morgan(NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Parse cookies for auth middleware
+app.use((req, res, next) => {
+    const rawCookies = req.headers.cookie || '';
+    req.cookies = rawCookies.split(';').filter(Boolean).reduce((cookies, cookie) => {
+        const [name, ...value] = cookie.split('=');
+        cookies[name.trim()] = decodeURIComponent(value.join('=').trim());
+        return cookies;
+    }, {});
+    next();
+});
+
 // ===== Session & Authentication =====
 app.use(session({
     secret: process.env.SESSION_SECRET || 'dev-secret-key',
