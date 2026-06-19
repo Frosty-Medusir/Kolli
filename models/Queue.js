@@ -29,7 +29,8 @@ const queueSchema = new mongoose.Schema({
         enum: ['movie', 'tv'],
         default: 'movie'
     },
-    
+    posterUrl: String,
+    releaseYear: Number,
     genres: [Number],
     genreId: Number,
     

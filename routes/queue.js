@@ -28,41 +28,63 @@ router.post('/join', async (req, res) => {
             });
         }
 
-        if (!contentId || !contentTitle) {
+        const parsedContentId = parseInt(contentId);
+        if (!parsedContentId || !contentTitle) {
             return res.status(400).json({ error: 'Content ID and title required' });
         }
 
-        // Create queue entry
-        const queueEntry = new Queue({
+        const parsedGenreId = parseInt(genreId);
+        const queueGenres = genre ? [parsedGenreId].filter(id => !Number.isNaN(id)) : [];
+        const queueData = {
             queueId: uuidv4(),
             userId,
-            contentId,
+            contentId: parsedContentId,
             contentTitle,
-            genres: genre ? [parseInt(genreId)] : [],
-            genreId: parseInt(genreId) || null,
-            joinedAt: new Date(),
-            status: 'waiting'
-        });
+            contentType: req.body.contentType || 'movie',
+            posterUrl: req.body.posterUrl || null,
+            releaseYear: req.body.releaseYear ? parseInt(req.body.releaseYear) : null,
+            genres: queueGenres,
+            genreId: Number.isInteger(parsedGenreId) ? parsedGenreId : null,
+            joinedAt: new Date()
+        };
 
-        await queueEntry.save();
-
-        // Look for matches with same content
-        const existingEntry = await Queue.findOne({
-            contentId,
+        // Try to atomically lock an existing waiting entry for the same content
+        const existingEntry = await Queue.findOneAndUpdate({
+            contentId: parsedContentId,
+            contentType: queueData.contentType,
             userId: { $ne: userId },
             status: 'waiting',
             joinedAt: {
                 $gte: new Date(Date.now() - 5 * 60 * 1000) // 5 min window
             }
+        }, {
+            $set: {
+                status: 'matched',
+                matchedWith: userId
+            }
+        }, {
+            sort: { joinedAt: 1 },
+            new: true
         });
 
+        const queueEntry = new Queue({
+            ...queueData,
+            status: existingEntry ? 'matched' : 'waiting',
+            matchedWith: existingEntry ? existingEntry.userId : undefined
+        });
+
+        await queueEntry.save();
+
         if (existingEntry) {
-            // Found a match!
+            // Found a match
             const match = new Match({
                 matchId: uuidv4(),
-                contentId,
+                contentId: parsedContentId,
                 contentTitle,
-                genres: genre ? [parseInt(genreId)] : [],
+                contentType: queueData.contentType,
+                posterUrl: queueData.posterUrl,
+                releaseYear: queueData.releaseYear,
+                genres: queueGenres,
                 user1: userId,
                 user2: existingEntry.userId,
                 createdAt: new Date(),
@@ -71,18 +93,14 @@ router.post('/join', async (req, res) => {
 
             await match.save();
 
-            // Update queue entries
-            queueEntry.status = 'matched';
-            queueEntry.matchedWith = existingEntry.userId;
-            await queueEntry.save();
-
-            existingEntry.status = 'matched';
+            // Ensure the matched waiting entry has the right partner stored
             existingEntry.matchedWith = userId;
             await existingEntry.save();
 
             return res.json({
                 status: 'matched',
-                matchId: match.matchId
+                matchId: match.matchId,
+                queueId: queueEntry.queueId
             });
         }
 
@@ -124,15 +142,21 @@ router.get('/status', async (req, res) => {
             });
         }
 
-        // Check if still in queue
-        const queueEntry = await Queue.findOne({
+        const queueQuery = {
             userId,
             status: 'waiting'
-        });
+        };
+        if (contentId) {
+            queueQuery.contentId = parseInt(contentId);
+        }
+
+        // Check if still in queue
+        const queueEntry = await Queue.findOne(queueQuery);
 
         if (queueEntry) {
             return res.json({
                 status: 'queued',
+                queueId: queueEntry.queueId,
                 message: 'Still looking for a match...'
             });
         }
@@ -156,16 +180,11 @@ router.post('/leave', async (req, res) => {
         const { queueId } = req.body;
         const userId = req.user.id;
 
-        // Remove from queue
-        if (queueId) {
-            const entry = await Queue.findOne({ queueId, userId });
-            if (entry) {
-                entry.status = 'expired';
-                await entry.save();
-            }
-        }
+        // Remove waiting queue entries for this user
+        const queueQuery = queueId ? { queueId, userId, status: 'waiting' } : { userId, status: 'waiting' };
+        await Queue.updateMany(queueQuery, { status: 'expired' });
 
-        // Remove any active matches
+        // Remove any active match for this user
         const match = await Match.findOne({
             $or: [
                 { user1: userId },
