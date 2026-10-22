@@ -14,11 +14,11 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 const useTmdbV4 = !!TMDB_ACCESS_TOKEN;
 
 const FALLBACK_SEARCH_RESULTS = [
-    { id: 1, title: 'Breaking Bad', poster: 'https://image.tmdb.org/t/p/w342/ggFHVNu6YYI5L9pCfOacjizRGt.jpg', year: '2008', rating: '9.5', description: 'A high school chemistry teacher turned methamphetamine producer...', genres: [18, 80] },
-    { id: 2, title: 'The Office', poster: 'https://image.tmdb.org/t/p/w342/qWnJzyZhyy74gjpSjIXWmuk0ifX.jpg', year: '2005', rating: '8.8', description: 'A mockumentary on a group of typical office workers...', genres: [35] },
-    { id: 3, title: 'Stranger Things', poster: 'https://image.tmdb.org/t/p/w342/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg', year: '2016', rating: '8.7', description: 'When a young boy vanishes, a small town uncovers a mystery...', genres: [18, 9648, 10765] },
-    { id: 4, title: 'The Mandalorian', poster: 'https://image.tmdb.org/t/p/w342/sWgBv7LV2PRoQgkxwlibdGXKz1S.jpg', year: '2019', rating: '8.7', description: 'A lone gunfighter makes his way through the outer reaches...', genres: [10765, 12, 878] },
-    { id: 5, title: 'Spider-Man: Into the Spider-Verse', poster: 'https://image.tmdb.org/t/p/w342/iiZZdoQBEYBv6id8kYg1ZHZs76V.jpg', year: '2018', rating: '8.4', description: 'Teen Miles Morales becomes Spider-Man of his reality...', genres: [12, 16, 878] }
+    { id: 1, title: 'Breaking Bad', poster: 'https://image.tmdb.org/t/p/w342/ggFHVNu6YYI5L9pCfOacjizRGt.jpg', year: '2008', rating: '9.5', description: 'A high school chemistry teacher turned methamphetamine producer...', genres: [18, 80], type: 'tv' },
+    { id: 2, title: 'The Office', poster: 'https://image.tmdb.org/t/p/w342/qWnJzyZhyy74gjpSjIXWmuk0ifX.jpg', year: '2005', rating: '8.8', description: 'A mockumentary on a group of typical office workers...', genres: [35], type: 'tv' },
+    { id: 3, title: 'Stranger Things', poster: 'https://image.tmdb.org/t/p/w342/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg', year: '2016', rating: '8.7', description: 'When a young boy vanishes, a small town uncovers a mystery...', genres: [18, 9648, 10765], type: 'tv' },
+    { id: 4, title: 'The Mandalorian', poster: 'https://image.tmdb.org/t/p/w342/sWgBv7LV2PRoQgkxwlibdGXKz1S.jpg', year: '2019', rating: '8.7', description: 'A lone gunfighter makes his way through the outer reaches...', genres: [10765, 12, 878], type: 'tv' },
+    { id: 5, title: 'Spider-Man: Into the Spider-Verse', poster: 'https://image.tmdb.org/t/p/w342/iiZZdoQBEYBv6id8kYg1ZHZs76V.jpg', year: '2018', rating: '8.4', description: 'Teen Miles Morales becomes Spider-Man of his reality...', genres: [12, 16, 878], type: 'movie' }
 ];
 
 /**
@@ -39,9 +39,10 @@ router.get('/', async (req, res) => {
             // Use fallback when no API credentials available
             const lowerQuery = q.trim().toLowerCase();
             results = FALLBACK_SEARCH_RESULTS.filter(item =>
-                item.title.toLowerCase().includes(lowerQuery) ||
-                item.description.toLowerCase().includes(lowerQuery) ||
-                (item.year && item.year.includes(lowerQuery))
+                (type === 'both' || item.type === type) &&
+                (item.title.toLowerCase().includes(lowerQuery) ||
+                    item.description.toLowerCase().includes(lowerQuery) ||
+                    (item.year && item.year.includes(lowerQuery)))
             );
         } else {
             // Search TMDB (v3 or v4)
@@ -106,7 +107,11 @@ router.get('/', async (req, res) => {
                         year: (item.release_date || item.first_air_date || '').split('-')[0],
                         rating: item.vote_average ? item.vote_average.toFixed(1) : 'N/A',
                         description: item.overview || 'No description available',
-                        type: item.media_type || item.media_type === 'movie' || item.media_type === 'tv' ? item.media_type : 'unknown',
+                        type: item.media_type === 'movie' || item.media_type === 'tv'
+                            ? item.media_type
+                            : type === 'tv' || type === 'movie'
+                                ? type
+                                : item.title ? 'movie' : 'tv',
                         genres: item.genre_ids || []
                     }));
             } catch (tmdbError) {

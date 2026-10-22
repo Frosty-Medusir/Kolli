@@ -18,6 +18,12 @@ const userSchema = new mongoose.Schema({
         unique: true,
         required: true
     },
+    isGuest: {
+        type: Boolean,
+        default: false
+    },
+    adultConfirmedAt: Date,
+    privacyNoticeVersion: String,
     avatar: String,
     bio: String,
     

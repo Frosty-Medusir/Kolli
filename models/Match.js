@@ -29,6 +29,7 @@ const matchSchema = new mongoose.Schema({
     rating: Number,
     releaseYear: Number,
     description: String,
+    kosmiRoomUrl: String,
     
     user1: {
         type: mongoose.Schema.Types.ObjectId,

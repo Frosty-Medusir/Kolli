@@ -3,6 +3,8 @@ import { User } from '../models/User.js';
 import { Rating } from '../models/Rating.js';
 import { Report } from '../models/Report.js';
 import { Match } from '../models/Match.js';
+import { Message } from '../models/Message.js';
+import { Queue } from '../models/Queue.js';
 
 const router = express.Router();
 
@@ -11,16 +13,20 @@ const router = express.Router();
  */
 router.get('/profile', async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-_id -__v');
+        const user = await User.findById(req.user.id).select('-__v');
         
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
 
         res.json({
+            id: user._id,
             username: user.username,
             email: user.email,
             avatar: user.avatar,
+            isGuest: user.isGuest,
+            completedWatchParties: user.stats.matchesCompleted || 0,
+            adultConfirmed: Boolean(user.adultConfirmedAt),
             bio: user.bio,
             preferences: user.preferences,
             watchingNow: user.watchingNow,
@@ -71,21 +77,21 @@ router.put('/preferences', async (req, res) => {
  */
 router.post('/rate', async (req, res) => {
     try {
-        const { partnerId, stars, comment, tags } = req.body;
+        const { partnerId, matchId, stars, comment } = req.body;
 
-        if (!partnerId || typeof stars !== 'number' || stars < 1 || stars > 5) {
+        if (!partnerId || typeof stars !== 'number' || !Number.isInteger(stars) || stars < 1 || stars > 5) {
             return res.status(400).json({ error: 'Partner ID and star rating (1-5) required' });
         }
 
         const match = await Match.findOne({
-            $or: [
-                { user1: req.user.id, user2: partnerId },
-                { user1: partnerId, user2: req.user.id }
-            ],
+            matchId,
             status: 'ended'
-        }).sort({ createdAt: -1 });
+        });
 
-        if (!match) {
+        if (!match || ![
+            [match.user1, match.user2],
+            [match.user2, match.user1]
+        ].some(([from, to]) => from.toString() === req.user.id.toString() && to.toString() === partnerId.toString())) {
             return res.status(400).json({ error: 'No completed match found for rating' });
         }
 
@@ -95,10 +101,17 @@ router.post('/rate', async (req, res) => {
             matchId: match._id,
             stars,
             comment: comment?.substring(0, 500),
-            tags: tags || []
+            tags: []
         });
 
-        await newRating.save();
+        try {
+            await newRating.save();
+        } catch (error) {
+            if (error.code === 11000) {
+                return res.status(409).json({ error: 'You already rated this watch party' });
+            }
+            throw error;
+        }
 
         const toUser = await User.findById(partnerId);
         if (toUser) {
@@ -123,6 +136,72 @@ router.post('/rate', async (req, res) => {
         res.json({ 
             message: 'Rating submitted',
             rating: newRating
+        });
+
+        router.get('/privacy/export', async (req, res) => {
+            try {
+                const userId = req.user.id;
+                const user = await User.findById(userId).select('-__v -googleId');
+                if (!user) {
+                    return res.status(404).json({ error: 'User not found' });
+                }
+
+                const matches = await Match.find({
+                    $or: [{ user1: userId }, { user2: userId }]
+                }).select('-__v').lean();
+                const messages = await Message.find({
+                    lobbyId: { $in: matches.map(match => match.matchId) }
+                }).select('-__v').lean();
+                const ratings = await Rating.find({
+                    $or: [{ fromUser: userId }, { toUser: userId }]
+                }).select('-__v').lean();
+                const reports = await Report.find({
+                    $or: [{ reportedBy: userId }, { reportedUser: userId }]
+                }).select('-__v').lean();
+
+                res.json({
+                    exportedAt: new Date().toISOString(),
+                    profile: user,
+                    matches,
+                    messages,
+                    ratings,
+                    reports
+                });
+            } catch (error) {
+                console.error('Privacy export error:', error);
+                res.status(500).json({ error: 'Failed to export account data' });
+            }
+        });
+
+        router.delete('/account', async (req, res) => {
+            try {
+                const userId = req.user.id;
+                const matches = await Match.find({
+                    $or: [{ user1: userId }, { user2: userId }]
+                }).select('matchId');
+                const matchIds = matches.map(match => match.matchId);
+
+                await Promise.all([
+                    Queue.deleteMany({ userId }),
+                    Message.deleteMany({
+                        $or: [{ senderId: userId }, { lobbyId: { $in: matchIds } }]
+                    }),
+                    Rating.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] }),
+                    Report.deleteMany({ $or: [{ reportedBy: userId }, { reportedUser: userId }] }),
+                    Match.deleteMany({ _id: { $in: matches.map(match => match._id) } })
+                ]);
+                await User.deleteOne({ _id: userId });
+
+                res.clearCookie('kolli_auth', {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+                });
+                res.json({ message: 'Account and associated Kolli data deleted' });
+            } catch (error) {
+                console.error('Account deletion error:', error);
+                res.status(500).json({ error: 'Failed to delete account data' });
+            }
         });
 
     } catch (error) {

@@ -22,6 +22,13 @@ router.post('/join', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        if (currentUser.isGuest && currentUser.stats.matchesCompleted >= 3) {
+            return res.status(403).json({
+                code: 'account_link_required',
+                error: 'You’ve completed three watch parties. Link a Google account to keep matching and save your watch history.'
+            });
+        }
+
         if (currentUser.shadowBannedUntil && new Date(currentUser.shadowBannedUntil) > new Date()) {
             return res.status(403).json({
                 error: 'You are temporarily shadow banned due to multiple poor ratings. Please try again later.'
@@ -88,7 +95,7 @@ router.post('/join', async (req, res) => {
                 user1: userId,
                 user2: existingEntry.userId,
                 createdAt: new Date(),
-                expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 min session
+                expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000) // Keep the room and rating available for a watch session
             });
 
             await match.save();
@@ -124,20 +131,23 @@ router.get('/status', async (req, res) => {
         const { contentId } = req.query;
         const userId = req.user.id;
 
-        // Check if user has an active match
-        const match = await Match.findOne({
+        const participantQuery = {
             $or: [
                 { user1: userId },
                 { user2: userId }
-            ],
+            ]
+        };
+
+        const activeMatch = await Match.findOne({
+            ...participantQuery,
             status: 'active',
             expiresAt: { $gt: new Date() }
         });
 
-        if (match) {
+        if (activeMatch) {
             return res.json({
                 status: 'matched',
-                matchId: match.matchId,
+                matchId: activeMatch.matchId,
                 message: 'Match found!'
             });
         }
@@ -158,6 +168,20 @@ router.get('/status', async (req, res) => {
                 status: 'queued',
                 queueId: queueEntry.queueId,
                 message: 'Still looking for a match...'
+            });
+        }
+
+        const endedMatch = await Match.findOne({
+            ...participantQuery,
+            status: 'ended',
+            expiresAt: { $gt: new Date() }
+        }).sort({ endedAt: -1 });
+
+        if (endedMatch) {
+            return res.json({
+                status: 'ended',
+                matchId: endedMatch.matchId,
+                message: 'Your watch party has ended.'
             });
         }
 

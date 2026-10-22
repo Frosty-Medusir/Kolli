@@ -40,7 +40,16 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URL;
 
 // ===== Security & Middleware =====
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            frameSrc: ["'self'", 'https://kosmi.io', 'https://*.kosmi.io'],
+            imgSrc: ["'self'", 'data:', 'https://image.tmdb.org', 'https://via.placeholder.com'],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com']
+        }
+    }
+}));
 
 const allowedOrigins = [
     process.env.CLIENT_URL,
@@ -62,6 +71,7 @@ app.use(cors({
 app.use(morgan(NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.static(join(__dirname, 'public')));
 
 // Parse cookies for auth middleware
 app.use((req, res, next) => {
@@ -99,6 +109,10 @@ app.use('/api/search', searchRoutes); // Public search (no auth required for onb
 app.use('/api/queue', authenticateToken, queueRoutes);
 app.use('/api/lobby', authenticateToken, lobbyRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
+
+app.get('/dashboard.html', (req, res) => {
+    res.sendFile(join(__dirname, 'public', 'index.html'));
+});
 
 // ===== Root route =====
 app.get('/', (req, res) => {

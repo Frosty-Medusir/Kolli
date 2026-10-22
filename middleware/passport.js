@@ -5,34 +5,22 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
-}, async (accessToken, refreshToken, profile, done) => {
-    try {
-        // Find or create user in MongoDB
-        let user = await User.findOne({ googleId: profile.id });
-        
-        if (!user) {
-            user = new User({
-                googleId: profile.id,
-                username: profile.displayName,
-                email: profile.emails[0].value,
-                avatar: profile.photos[0]?.value,
-                preferences: {
-                    genres: [],
-                    watchedMovies: []
-                }
-            });
-            await user.save();
+export const googleOAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
+if (googleOAuthEnabled) {
+    passport.use(new GoogleStrategy({
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
+    }, async (accessToken, refreshToken, profile, done) => {
+        try {
+            const user = await User.findOne({ googleId: profile.id });
+            return done(null, user || { googleProfile: profile });
+        } catch (error) {
+            return done(error);
         }
-        
-        return done(null, user);
-    } catch (error) {
-        return done(error);
-    }
-}));
+    }));
+}
 
 passport.serializeUser((user, done) => {
     done(null, user._id);

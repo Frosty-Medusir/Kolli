@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f3ed">
+  <meta name="description" content="Find your people, pick a movie, and make tonight a watch party with Kolli.">
+  <meta name="kolli-api-base" content="">
+  <title>Kolli — Watch together</title>
+  <link rel="icon" type="image/png" href="assets/kolli-logo.png">
+  <link rel="apple-touch-icon" href="assets/kolli-logo.png">
+  <link rel="preconnect" href="https://image.tmdb.org">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Kolli home">
+      <img src="assets/kolli-logo.png" alt="" class="brand-mark">
+      <span>kolli<span class="brand-period">.</span></span>
+    </a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a class="nav-link active" href="#discover">Discover</a>
+      <a class="nav-link" href="#how-it-works">How it works</a>
+    </nav>
+    <div class="account-area">
+      <span class="online-note"><span class="online-dot"></span> Your next watch buddy is out there</span>
+      <button class="button button-dark button-small" id="account-button">Join to match <span aria-hidden="true">↗</span></button>
+      <div class="profile-chip hidden" id="profile-chip">
+        <img id="profile-avatar" alt="" src="">
+        <span id="profile-name"></span>
+        <button class="icon-button" id="account-menu-button" aria-label="Account and privacy" title="Account and privacy">⚙</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="discover">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-line"></span> GOOD MOVIES. BETTER COMPANY.</div>
+        <h1>Find your<br>people.<br><span>Press play.</span></h1>
+        <p class="hero-intro">The best part of watching is having someone to watch with. Find your kind of movie person and make a night of it.</p>
+        <form class="search-form" id="search-form">
+          <span class="search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 4.2 4.2"></path></svg>
+          </span>
+          <label class="visually-hidden" for="search-input">Search movies and shows</label>
+          <input id="search-input" type="search" placeholder="Search a movie or show..." autocomplete="off">
+          <button class="button button-red search-submit" type="submit">Find a match <span aria-hidden="true">↗</span></button>
+        </form>
+        <div class="search-meta">
+          <div class="type-switch" role="group" aria-label="Search type">
+            <button class="type-button selected" data-type="both" type="button">Everything</button>
+            <button class="type-button" data-type="movie" type="button">Movies</button>
+            <button class="type-button" data-type="tv" type="button">TV shows</button>
+          </div>
+          <span class="search-hint"><kbd>↵</kbd> to search</span>
+        </div>
+      </div>
+      <div class="hero-art" aria-label="Featured movies">
+        <div class="art-glow"></div>
+        <div class="poster-card poster-back">
+          <img src="https://image.tmdb.org/t/p/w342/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg" alt="Stranger Things">
+        </div>
+        <div class="poster-card poster-front">
+          <img src="https://image.tmdb.org/t/p/w342/qWnJzyZhyy74gjpSjIXWmuk0ifX.jpg" alt="The Office">
+          <div class="poster-caption"><span class="caption-label">TONIGHT'S PICK</span><strong>Make it a<br>movie night.</strong></div>
+        </div>
+        <div class="floating-note note-top"><span class="note-icon">✳</span><span><strong>Same taste?</strong><small>Meet your match.</small></span></div>
+        <div class="floating-note note-bottom"><span class="avatar-stack"><i>J</i><i>M</i><i>K</i></span><span><strong>Good company</strong><small>is one click away</small></span></div>
+        <span class="art-sparkle sparkle-one">✳</span><span class="art-sparkle sparkle-two">✳</span>
+      </div>
+      <div class="hero-stamp"><span>✳</span> LESS SCROLLING<br>MORE SHARED MOMENTS</div>
+    </section>
+
+    <section class="content-section" id="picks">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow"><span class="eyebrow-line"></span> A LITTLE INSPIRATION</div>
+          <h2 id="results-title">Something good is <span>on.</span></h2>
+          <p class="section-subtitle" id="results-subtitle">Pick a title. We’ll find someone who loves it too.</p>
+        </div>
+        <button class="text-button" id="show-all-button" type="button">Explore all <span aria-hidden="true">↗</span></button>
+      </div>
+      <div class="results-status hidden" id="results-status" role="status"></div>
+      <div class="movie-grid" id="movie-grid" aria-live="polite"></div>
+      <div class="empty-state hidden" id="empty-state">
+        <div class="empty-icon">⌕</div>
+        <h3>No titles found just yet</h3>
+        <p>Try another title, or search for a movie or show you already love.</p>
+      </div>
+    </section>
+
+    <section class="how-section" id="how-it-works">
+      <div class="how-intro">
+        <div class="eyebrow"><span class="eyebrow-line"></span> IT'S A VERY GOOD PLAN</div>
+        <h2>From “what should we watch?” to <span>“that was fun.”</span></h2>
+        <p>Skip the group chat logistics. Kolli brings movie people together, one great pick at a time.</p>
+        <button class="button button-dark" id="how-cta">Find your people <span aria-hidden="true">↗</span></button>
+      </div>
+      <div class="steps">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <span class="step-icon">⌕</span>
+          <h3>Pick your pick</h3>
+          <p>Choose the film or show you’re in the mood for.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <span class="step-icon">✳</span>
+          <h3>Meet your match</h3>
+          <p>We’ll find someone who wants to watch it, too.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <span class="step-icon">▷</span>
+          <h3>Make it a night</h3>
+          <p>Say hello, settle in, and enjoy watching together.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <a class="brand footer-brand" href="/" aria-label="Kolli home">
+      <img src="assets/kolli-logo.png" alt="" class="brand-mark"><span>kolli<span class="brand-period">.</span></span>
+    </a>
+    <p>Good movies are better together.</p>
+    <span class="footer-note"><a href="privacy.html">PRIVACY</a> · MADE FOR MOVIE PEOPLE <span>✳</span></span>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop hidden" id="modal-backdrop">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-close icon-button" id="modal-close" aria-label="Close">×</button>
+      <div id="modal-content"></div>
+    </section>
+  </div>
+</body>
+</html>
